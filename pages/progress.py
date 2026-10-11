@@ -1,4 +1,4 @@
-"""Weekly/monthly trends, factual insights, streaks, and celebration."""
+"""A personal growth dashboard with real, user-owned wellness trends."""
 
 from __future__ import annotations
 
@@ -14,206 +14,326 @@ from src.celebrations import generate_achievement_card
 from src.database import DailyLogRepository, RepositoryError
 from src.insights import weekly_insights
 from src.progress import (
+    PERIOD_OPTIONS,
+    habit_status_counts,
     latest_qualifying_week,
     monthly_metrics,
+    period_bounds,
+    period_overview,
+    period_series,
     qualifying_weeks_in_month,
+    records_in_period,
+    tracked_average,
     weekly_habit_stats,
-    weekly_series,
 )
 from src.scoring import calculate_current_streak, calculate_weekly_average
 from src.timezone_utils import india_today, month_bounds, week_bounds
 from src.ui import (
+    apply_journal_background,
+    apply_journal_page_styles,
     message_card,
     page_heading,
     render_primary_navigation,
     render_settings,
-    section_label,
     stat_grid,
 )
 
 
-def trend_chart(frame: pd.DataFrame, field: str, title: str, suffix: str = "") -> None:
-    available = frame.loc[frame[field].notna(), ["day", field]]
-    if len(available) < 3:
-        if available.empty:
-            values = "No recorded data yet"
-        else:
-            values = "  ·  ".join(
-                f"{row['day']}: {float(row[field]):g}{suffix}" for _, row in available.iterrows()
+def _section_heading(title: str, note: str = "") -> None:
+    st.html(
+        '<div class="journal-section-heading">'
+        f'<h2>{html.escape(title)}</h2><span>{html.escape(note)}</span></div>'
+    )
+
+
+def _chart_heading(title: str, description: str) -> None:
+    st.html(
+        '<div class="journal-chart-heading">'
+        f'<h2>{html.escape(title)}</h2><p>{html.escape(description)}</p></div>'
+    )
+
+
+def _chart_empty(message: str) -> None:
+    st.html(f'<div class="journal-chart-empty">{html.escape(message)}</div>')
+
+
+def _chart_layout(figure: go.Figure, *, height: int = 250) -> None:
+    figure.update_layout(
+        height=height,
+        margin={"l": 8, "r": 8, "t": 15, "b": 12},
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font={"family": "Segoe UI, sans-serif", "color": "#C9C0D7", "size": 12},
+        hoverlabel={"bgcolor": "#25183B", "bordercolor": "#A78BFA", "font": {"color": "#FAF8FF"}},
+        showlegend=False,
+    )
+
+
+def _trend_chart(
+    series: list[dict], field: str, title: str, description: str, unit: str,
+    *, color: str = "#A78BFA", reference: float | None = None,
+) -> None:
+    with st.container(key=f"journal_chart_{field}"):
+        _chart_heading(title, description)
+        if not any(row.get(field) is not None for row in series):
+            _chart_empty("Your trend will appear as you record more days.")
+            return
+        figure = go.Figure(go.Scatter(
+            x=[row["date"] for row in series],
+            y=[row.get(field) for row in series],
+            mode="lines+markers",
+            connectgaps=False,
+            line={"color": color, "width": 2.5},
+            marker={"color": color, "size": 8, "line": {"color": "#160B26", "width": 1}},
+            hovertemplate=f"%{{x|%d %b %Y}}<br><b>%{{y:.1f}}{unit}</b><extra></extra>",
+        ))
+        if reference is not None:
+            figure.add_hline(
+                y=reference, line_color="rgba(196,181,253,.55)", line_dash="dot",
+                annotation_text="80% marker", annotation_position="top left",
+                annotation_font_color="#C4B5FD", annotation_font_size=11,
             )
-        count = f"{len(available)} recorded {'day' if len(available) == 1 else 'days'}"
-        st.markdown(
-            f"""<div class="trend-summary"><div class="trend-summary-head">
-            <span class="trend-title">{html.escape(title)}</span><span class="trend-count">{count}</span></div>
-            <div class="trend-values">{html.escape(values)}</div></div>""",
-            unsafe_allow_html=True,
+        figure.update_xaxes(
+            type="date", tickformat="%d %b", nticks=5, showgrid=False,
+            linecolor="rgba(196,181,253,.2)", automargin=True, fixedrange=True,
         )
-        return
-
-    figure = go.Figure()
-    figure.add_trace(go.Scatter(
-        x=frame["day"], y=frame[field], mode="lines+markers", connectgaps=False,
-        line={"color": "#8B5CF6", "width": 3}, marker={"size": 8, "color": "#A78BFA"},
-        hovertemplate=f"%{{x}}: %{{y:.1f}}{suffix}<extra></extra>",
-    ))
-    figure.update_layout(
-        title={"text": title, "font": {"size": 15}}, height=225,
-        margin={"l": 10, "r": 10, "t": 45, "b": 16},
-        paper_bgcolor="#171024", plot_bgcolor="#171024", font={"color": "#B8AEC9"},
-        xaxis={"fixedrange": True, "showgrid": False},
-        yaxis={"fixedrange": True, "gridcolor": "#2C2140", "rangemode": "tozero"},
-        showlegend=False,
-    )
-    st.plotly_chart(figure, width="stretch", config={"displayModeBar": False})
-
-
-def consistency_chart(records: list[dict], first: date, through: date) -> None:
-    completed = {
-        date.fromisoformat(str(row["log_date"]))
-        for row in records
-        if float(row.get("daily_completion_score") or 0) == 100
-    }
-    if len(records) < 3:
-        elapsed = (through - first).days + 1
-        st.markdown(
-            f"""<div class="trend-summary"><div class="trend-summary-head">
-            <span class="trend-title">Habit Consistency</span><span class="trend-count">MONTH TO DATE</span></div>
-            <div class="trend-values">{len(completed)} complete · {elapsed} days elapsed</div></div>""",
-            unsafe_allow_html=True,
+        figure.update_yaxes(
+            ticksuffix=unit, showgrid=True, gridcolor="rgba(196,181,253,.11)",
+            zeroline=False, automargin=True, fixedrange=True,
+            range=[0, 105] if field == "daily_score" else None,
+            rangemode="tozero",
         )
+        _chart_layout(figure)
+        st.plotly_chart(figure, width="stretch", config={"displayModeBar": False})
+
+
+def _habit_chart(records: list[dict]) -> None:
+    with st.container(key="journal_chart_habits"):
+        _chart_heading(
+            "Little Habits, Big Progress",
+            "Yes, No, and untracked answers among saved entries.",
+        )
+        if not records:
+            _chart_empty("Habit patterns will appear after your first saved day.")
+            return
+        counts = habit_status_counts(records)
+        labels = ("Exercise", "Fruit", "Freshened up")
+        fields = ("exercise_done", "ate_fruit", "freshened_up")
+        figure = go.Figure()
+        for index, (status, color) in enumerate((
+            ("Yes", "#A78BFA"), ("No", "#6D4B9C"), ("Not tracked", "#454052"),
+        )):
+            figure.add_trace(go.Bar(
+                y=labels,
+                x=[counts[field][index] for field in fields],
+                orientation="h",
+                name=status,
+                marker_color=color,
+                hovertemplate=f"%{{y}}<br>{status}: %{{x}} saved days<extra></extra>",
+            ))
+        figure.update_layout(barmode="stack", bargap=.35, showlegend=True)
+        _chart_layout(figure, height=255)
+        figure.update_layout(
+            showlegend=True,
+            legend={"orientation": "h", "y": 1.12, "x": 0, "font": {"size": 11}},
+            margin={"l": 8, "r": 8, "t": 38, "b": 12},
+        )
+        figure.update_xaxes(
+            title="Saved entries", rangemode="tozero", dtick=1 if len(records) <= 10 else None,
+            gridcolor="rgba(196,181,253,.11)", zeroline=False, fixedrange=True,
+        )
+        figure.update_yaxes(autorange="reversed", fixedrange=True)
+        st.plotly_chart(figure, width="stretch", config={"displayModeBar": False})
+
+
+def _monthly_completion_chart(records: list[dict], first: date, through: date) -> None:
+    """Keep the established calendar-month completion view available, but compact."""
+    if not records:
+        _chart_empty("The monthly pattern will appear after your first saved entry.")
         return
+    lookup = {date.fromisoformat(str(row["log_date"])): row for row in records}
     dates = pd.date_range(first, through, freq="D")
-    frame = pd.DataFrame({
-        "date": dates,
-        "status": [1 if value.date() in completed else 0 for value in dates],
-        "color": ["#8B5CF6" if value.date() in completed else "#2C2140" for value in dates],
-    })
+    labels = []
+    colors = []
+    values = []
+    for day in dates:
+        row = lookup.get(day.date())
+        if row is None:
+            labels.append("No entry")
+            colors.append("#342941")
+            values.append(0)
+        elif row.get("daily_completion_score") is None:
+            labels.append("Completion not tracked")
+            colors.append("#55466A")
+            values.append(.35)
+        elif float(row["daily_completion_score"]) == 100:
+            labels.append("Complete")
+            colors.append("#A78BFA")
+            values.append(1)
+        else:
+            labels.append("Not complete")
+            colors.append("#6D4B9C")
+            values.append(.5)
     figure = go.Figure(go.Bar(
-        x=frame["date"].dt.strftime("%d"),
-        y=frame["status"],
-        marker_color=frame["color"],
-        hovertemplate="%{x}: %{customdata}<extra></extra>",
-        customdata=["Complete" if value else "Not recorded" for value in frame["status"]],
+        x=dates,
+        y=values,
+        marker_color=colors,
+        customdata=labels,
+        hovertemplate="%{x|%d %b %Y}<br>%{customdata}<extra></extra>",
     ))
-    figure.update_layout(
-        title={"text": "Habit Consistency", "font": {"size": 15}}, height=205,
-        margin={"l": 10, "r": 10, "t": 45, "b": 16}, bargap=0.22,
-        paper_bgcolor="#171024", plot_bgcolor="#171024", font={"color": "#B8AEC9"},
-        xaxis={"fixedrange": True, "showgrid": False, "title": "Day of month"},
-        yaxis={"fixedrange": True, "visible": False, "range": [0, 1.15]},
-        showlegend=False,
-    )
+    _chart_layout(figure, height=190)
+    figure.update_xaxes(tickformat="%d %b", nticks=6, showgrid=False, fixedrange=True)
+    figure.update_yaxes(visible=False, range=[0, 1.1], fixedrange=True)
     st.plotly_chart(figure, width="stretch", config={"displayModeBar": False})
+
+
+def _reflection(week_records: list[dict], previous_records: list[dict], monday: date, sunday: date) -> None:
+    scored = [row for row in week_records if row.get("daily_score") is not None]
+    average = calculate_weekly_average(scored) if scored else None
+    complete = sum(float(row.get("daily_completion_score") or 0) == 100 for row in week_records)
+    insights = weekly_insights(week_records, previous_records)
+    week_label = f"{monday.strftime('%d %b')}–{sunday.strftime('%d %b')}"
+    score_text = (
+        f"{average:.1f}% average · {complete} of 7 complete" if average is not None
+        else f"{complete} of 7 complete · no scored entries" if week_records
+        else "A new week to begin"
+    )
+    items = "".join(
+        f'<div class="journal-reflection-item">{html.escape(item)}</div>' for item in insights
+    )
+    st.html(
+        '<div class="journal-reflection">'
+        f'<div class="journal-reflection-head"><h2>Weekly Reflection</h2><span>{html.escape(week_label)}</span></div>'
+        f'<div class="journal-entry-meta">{html.escape(score_text)}</div>{items}</div>'
+    )
 
 
 today = india_today()
 repo = DailyLogRepository(get_supabase_client(), current_user_id() or "")
 render_settings(repo)
+apply_journal_background()
+apply_journal_page_styles()
 render_primary_navigation()
-page_heading("Progress", "Patterns, not pressure")
 
-try:
-    all_records = repo.list_logs()
-except RepositoryError as exc:
-    st.error(str(exc))
-    st.stop()
+with st.container(key="progress_page"):
+    with st.container(key="progress_header"):
+        page_heading("Your Growth Garden", "Small habits. Beautiful progress.")
 
-monday, sunday = week_bounds(today)
-week_records = [row for row in all_records if monday.isoformat() <= str(row["log_date"]) <= sunday.isoformat()]
-previous_records = [
-    row for row in all_records
-    if (monday - timedelta(days=7)).isoformat() <= str(row["log_date"]) <= (monday - timedelta(days=1)).isoformat()
-]
-weekly_average = calculate_weekly_average(week_records)
-completed_days = sum(float(row.get("daily_completion_score") or 0) == 100 for row in week_records)
-streak = calculate_current_streak(all_records, today)
+    try:
+        all_records = repo.list_logs()
+    except RepositoryError as exc:
+        st.error(str(exc))
+        st.stop()
 
-section_label("◫", "This week", "WEEK TO DATE" if today < sunday or completed_days < 7 else "COMPLETE WEEK")
-stat_grid(
-    [
-        ("WEEKLY AVERAGE", f"{weekly_average:.1f}%", "Monday → Sunday"),
-        ("COMPLETED", f"{completed_days} / 7", "Complete daily entries"),
-        ("CURRENT STREAK", f"{streak} {'day' if streak == 1 else 'days'}", "Consecutive complete days"),
-    ]
-)
+    period = st.segmented_control(
+        "Time period", PERIOD_OPTIONS, default="Last 7 days",
+        key="progress_period", width="stretch", wrap=False,
+    ) or "Last 7 days"
+    first_day, last_day = period_bounds(today, period)
+    selected_records = records_in_period(all_records, first_day, last_day)
+    overview = period_overview(selected_records)
+    series = period_series(selected_records, first_day, last_day)
+    streak = calculate_current_streak(all_records, today)
+    habits = weekly_habit_stats(selected_records)
 
-habit_stats = weekly_habit_stats(week_records)
-habit_cards = []
-fruit_yes, fruit_tracked = habit_stats["ate_fruit"]
-if fruit_tracked:
-    habit_cards.append(("FRUIT", f"{fruit_yes} / {fruit_tracked}", "Tracked days with fruit"))
-freshened_yes, freshened_tracked = habit_stats["freshened_up"]
-if freshened_tracked:
-    habit_cards.append(
-        ("FRESHENED UP", f"{freshened_yes} / {freshened_tracked}", "Tracked mornings")
+    _section_heading("At a glance", f"{first_day.strftime('%d %b')} – {last_day.strftime('%d %b')}")
+    stat_grid([
+        ("AVERAGE SCORE", f"{overview['average_score']:.1f}%" if overview["average_score"] is not None else "—", "Scored entries"),
+        ("COMPLETED", str(overview["completed_days"]), f"Of {overview['recorded_days']} saved days"),
+        ("CURRENT STREAK", f"{streak} {'day' if streak == 1 else 'days'}", "Across all saved days"),
+    ])
+    _section_heading("Everyday rhythms")
+    stat_grid([
+        ("AVERAGE SLEEP", f"{overview['average_sleep']:.1f} h" if overview["average_sleep"] is not None else "—", "Tracked days"),
+        ("EXERCISE", f"{overview['exercise_days']} / {overview['exercise_tracked']}" if overview["exercise_tracked"] else "—", "Tracked days exercised"),
+        ("AVERAGE WATER", f"{overview['average_water']:.1f} L" if overview["average_water"] is not None else "—", "Tracked days"),
+    ])
+    fruit_yes, fruit_tracked = habits["ate_fruit"]
+    fresh_yes, fresh_tracked = habits["freshened_up"]
+    stat_grid([
+        ("FRUIT", f"{fruit_yes} / {fruit_tracked}" if fruit_tracked else "—", "Tracked days with fruit"),
+        ("FRESHENED UP", f"{fresh_yes} / {fresh_tracked}" if fresh_tracked else "—", "Tracked mornings"),
+    ])
+
+    _section_heading("Your patterns", "Based on saved entries")
+    _trend_chart(series, "daily_score", "Your Daily Rhythm", "Daily scores over the selected period.", "%", reference=80)
+    _habit_chart(selected_records)
+    tab_sleep, tab_water, *optional_exercise = st.tabs(
+        ["Sleep", "Water"]
+        + (["Exercise"] if sum(
+            row.get("exercise_done") is True and row.get("exercise_minutes") is not None
+            for row in selected_records
+        ) >= 2 else [])
     )
-if habit_cards:
-    stat_grid(habit_cards)
-
-series = pd.DataFrame(weekly_series(week_records, monday))
-trend_chart(series, "daily_score", "Daily Score", "%")
-tab_sleep, tab_exercise, tab_water = st.tabs(["Sleep", "Exercise", "Water"])
-with tab_sleep:
-    trend_chart(series, "sleep_hours", "Sleep Trend", " h")
-with tab_exercise:
-    exercise_frame = series.copy()
-    exercise_frame["exercise_value"] = exercise_frame["exercise_done"].map({True: 1, False: 0})
-    trend_chart(exercise_frame, "exercise_value", "Exercise Consistency")
-with tab_water:
-    trend_chart(series, "water_liters", "Water Trend", " L")
-
-insights = weekly_insights(week_records, previous_records)
-insight_items = "".join(f"<li>{html.escape(item)}</li>" for item in insights)
-st.markdown(
-    f'<div class="insight-panel"><div class="kpi-label">WEEKLY INSIGHTS</div><ul>{insight_items}</ul></div>',
-    unsafe_allow_html=True,
-)
-
-achievement = latest_qualifying_week(all_records)
-if achievement:
-    achievement_monday, achievement_records = achievement
-    achievement_average = calculate_weekly_average(achievement_records)
-    st.markdown("## 🎁 A Surprise For You")
-    when = "this week" if achievement_monday == monday else "in your latest qualifying week"
-    st.write(f"You completed 80%+ {when}!")
-    reveal_key = f"celebration_{achievement_monday.isoformat()}"
-    if st.session_state.get(reveal_key) or st.button("🔒 TAP TO OPEN", type="primary", width="stretch"):
-        st.session_state[reveal_key] = True
-        message_card(f"🎉 AMAZING! 🎉\n\nERUMAAA ❤️\n\n{achievement_average:.0f}% THIS WEEK\n\nI'm proud of you. Keep going, Alagiii. ❤️", complete=True)
-        try:
-            card = generate_achievement_card(achievement_average)
-            st.download_button(
-                "DOWNLOAD CARD",
-                data=card,
-                file_name=f"erumaas-daily-week-{achievement_monday.isoformat()}.png",
-                mime="image/png",
-                width="stretch",
+    with tab_sleep:
+        _trend_chart(series, "sleep_hours", "Rest & Recharge", "Recorded sleep duration.", " h")
+    with tab_water:
+        _trend_chart(series, "water_liters", "Hydration Journey", "Recorded water intake.", " L", color="#B967FF")
+    if optional_exercise:
+        exercise_series = [
+            {**row, "exercise_minutes": row["exercise_minutes"] if row.get("exercise_done") is True else None}
+            for row in series
+        ]
+        with optional_exercise[0]:
+            _trend_chart(
+                exercise_series, "exercise_minutes", "Movement Minutes",
+                "Recorded minutes on exercise days.", " min",
             )
-        except Exception:
-            st.error("We couldn't create the card right now. Please try again.")
-elif completed_days == 7:
-    message_card("Every week is a fresh start. ❤️ Small steps still count.")
 
-first, last = month_bounds(today)
-month_records = [row for row in all_records if first.isoformat() <= str(row["log_date"]) <= last.isoformat()]
-metrics = monthly_metrics(month_records)
-metrics["qualifying_weeks"] = qualifying_weeks_in_month(all_records, first, last)
-section_label("▦", "This month", today.strftime("%B").upper())
-metric_values = [
-    ("AVERAGE SCORE", f"{metrics['average_score']:.1f}%", "Recorded days"),
-    ("COMPLETED DAYS", str(metrics["completed_days"]), "This month"),
-    ("EXERCISE DAYS", str(metrics["exercise_days"]), "This month"),
-    ("AVERAGE SLEEP", f"{metrics['average_sleep']:.1f} h", "Recorded days"),
-    ("AVERAGE WATER", f"{metrics['average_water']:.1f} L", "Recorded days"),
-    ("BEST STREAK", f"{metrics['best_streak']} {'day' if metrics['best_streak'] == 1 else 'days'}", "This month"),
-    ("80%+ WEEKS", str(metrics["qualifying_weeks"]), "Complete weeks"),
-]
-stat_grid(metric_values)
+    monday, sunday = week_bounds(today)
+    week_records = records_in_period(all_records, monday, sunday)
+    previous_records = records_in_period(all_records, monday - timedelta(days=7), monday - timedelta(days=1))
+    _reflection(week_records, previous_records, monday, sunday)
 
-if month_records:
-    monthly_frame = pd.DataFrame(sorted(month_records, key=lambda row: row["log_date"]))
-    monthly_frame["day"] = pd.to_datetime(monthly_frame["log_date"]).dt.strftime("%d %b")
-    trend_chart(monthly_frame, "daily_score", "Monthly Score Trend", "%")
-else:
-    st.info("Your monthly trend will appear after your first saved entry.")
-consistency_chart(month_records, first, min(today, last))
+    achievement = latest_qualifying_week(all_records)
+    if achievement:
+        achievement_monday, achievement_records = achievement
+        achievement_average = calculate_weekly_average(achievement_records)
+        st.markdown("## 🎁 A Surprise For You")
+        when = "this week" if achievement_monday == monday else "in your latest qualifying week"
+        st.write(f"You completed 80%+ {when}!")
+        reveal_key = f"celebration_{achievement_monday.isoformat()}"
+        if st.session_state.get(reveal_key) or st.button("🔒 TAP TO OPEN", type="primary", width="stretch"):
+            st.session_state[reveal_key] = True
+            message_card(
+                f"🎉 AMAZING! 🎉\n\nERUMAAA ❤️\n\n{achievement_average:.0f}% THIS WEEK\n\n"
+                "I'm proud of you. Keep going, Alagiii. ❤️",
+                complete=True,
+            )
+            try:
+                card = generate_achievement_card(achievement_average)
+                st.download_button(
+                    "DOWNLOAD CARD", data=card,
+                    file_name=f"erumaas-daily-week-{achievement_monday.isoformat()}.png",
+                    mime="image/png", width="stretch",
+                )
+            except Exception:
+                st.error("We couldn't create the card right now. Please try again.")
+    elif sum(float(row.get("daily_completion_score") or 0) == 100 for row in week_records) == 7:
+        message_card("Every week is a fresh start. ❤️ Small steps still count.")
+
+    month_first, month_last = month_bounds(today)
+    month_records = records_in_period(all_records, month_first, month_last)
+    monthly = monthly_metrics(month_records)
+    monthly["qualifying_weeks"] = qualifying_weeks_in_month(all_records, month_first, month_last)
+    _section_heading("This month", today.strftime("%B %Y"))
+    if month_records:
+        stat_grid([
+            ("AVERAGE SCORE", f"{monthly['average_score']:.1f}%" if any(
+                row.get("daily_score") is not None for row in month_records
+            ) else "—", "Scored days"),
+            ("COMPLETED DAYS", str(monthly["completed_days"]), "Calendar month"),
+            ("EXERCISE DAYS", str(monthly["exercise_days"]), "Calendar month"),
+            ("AVERAGE SLEEP", f"{tracked_average(month_records, 'sleep_hours'):.1f} h" if tracked_average(
+                month_records, "sleep_hours"
+            ) is not None else "—", "Tracked days"),
+            ("AVERAGE WATER", f"{tracked_average(month_records, 'water_liters'):.1f} L" if tracked_average(
+                month_records, "water_liters"
+            ) is not None else "—", "Tracked days"),
+            ("BEST STREAK", f"{monthly['best_streak']} {'day' if monthly['best_streak'] == 1 else 'days'}", "This month"),
+            ("80%+ WEEKS", str(monthly["qualifying_weeks"]), "Complete weeks"),
+        ])
+        with st.expander("Monthly completion pattern"):
+            _monthly_completion_chart(month_records, month_first, min(today, month_last))
+    else:
+        _chart_empty("Your monthly picture will grow as you save daily entries.")
