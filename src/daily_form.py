@@ -66,7 +66,7 @@ def render_daily_form(
             key=f"{prefix}_sleep",
         )
         freshened = st.radio(
-            "Did you freshen up after waking up?",
+            "Did you freshen up after Office?",
             ["YES", "NO"],
             horizontal=True,
             index=None,
