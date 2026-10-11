@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from datetime import date
 from typing import Any
 
@@ -9,7 +10,7 @@ import streamlit as st
 
 from src.database import DailyLogRepository, RepositoryError
 from src.timezone_utils import india_today
-from src.ui import section_label
+from src.ui import habit_heading, section_label
 from src.validators import ValidationError
 
 
@@ -26,12 +27,33 @@ def _seed(key: str, value: Any) -> None:
         st.session_state[key] = value
 
 
+def _freshened_choice(prefix: str) -> str | None:
+    return st.radio(
+        "Did you freshen up after Office?",
+        ["YES", "NO"],
+        horizontal=True,
+        index=None,
+        key=f"{prefix}_freshened",
+    )
+
+
+def _meal_choice(prefix: str, number: int, today_style: bool) -> str | None:
+    with st.container(key=f"{prefix}_{number}_meal_row") if today_style else nullcontext():
+        label = {1: "1ST MEAL", 2: "2ND MEAL", 3: "3RD MEAL"}[number]
+        st.markdown(f'<div class="meal-label">{label}</div>', unsafe_allow_html=True)
+        return st.radio(
+            "Protein + fibre included?", ["YES", "NO"], horizontal=True,
+            index=None, key=f"{prefix}_meal{number}",
+        )
+
+
 def render_daily_form(
     target_date: date,
     repo: DailyLogRepository,
     existing: dict[str, Any] | None = None,
     *,
     heading: bool = True,
+    today_style: bool = False,
 ) -> None:
     prefix = f"daily_{target_date.isoformat()}"
     row = existing or {}
@@ -57,7 +79,7 @@ def render_daily_form(
     if heading:
         st.caption(target_date.strftime("%A, %d %B %Y"))
     with st.container(border=True, key=f"{prefix}_sleep_section"):
-        section_label("😴", "Sleep")
+        habit_heading("sleep", "Sleep") if today_style else section_label("😴", "Sleep")
         sleep = st.number_input(
             "Hours slept",
             min_value=0.0,
@@ -65,16 +87,11 @@ def render_daily_form(
             step=0.5,
             key=f"{prefix}_sleep",
         )
-        freshened = st.radio(
-            "Did you freshen up after Office?",
-            ["YES", "NO"],
-            horizontal=True,
-            index=None,
-            key=f"{prefix}_freshened",
-        )
+        if not today_style:
+            freshened = _freshened_choice(prefix)
 
     with st.container(border=True, key=f"{prefix}_exercise_section"):
-        section_label("🏃", "Exercise")
+        habit_heading("exercise", "Exercise") if today_style else section_label("🏃", "Exercise")
         exercise_choice = st.radio(
             "Did you exercise?",
             ["YES", "NO"],
@@ -92,31 +109,30 @@ def render_daily_form(
         )
 
     with st.container(border=True, key=f"{prefix}_food_section"):
-        section_label("🥗", "Food")
-        st.markdown('<div class="meal-label">1ST MEAL</div>', unsafe_allow_html=True)
-        meal1 = st.radio("Protein + fibre included?", ["YES", "NO"], horizontal=True, index=None, key=f"{prefix}_meal1")
-        st.markdown('<div class="meal-label">2ND MEAL</div>', unsafe_allow_html=True)
-        meal2 = st.radio("Protein + fibre included?", ["YES", "NO"], horizontal=True, index=None, key=f"{prefix}_meal2")
-        st.markdown('<div class="meal-label">3RD MEAL</div>', unsafe_allow_html=True)
-        meal3 = st.radio("Protein + fibre included?", ["YES", "NO"], horizontal=True, index=None, key=f"{prefix}_meal3")
-        junk = st.radio(
-            "Junk or sugary food?",
-            ["YES", "NO"],
-            horizontal=True,
-            index=None,
-            help="YES means it was consumed. NO means it was not consumed.",
-            key=f"{prefix}_junk",
-        )
-        fruit = st.radio(
-            "Did you eat any fruit today?",
-            ["YES", "NO"],
-            horizontal=True,
-            index=None,
-            key=f"{prefix}_fruit",
-        )
+        habit_heading("food", "Food & Nourishment") if today_style else section_label("🥗", "Food")
+        meal1 = _meal_choice(prefix, 1, today_style)
+        meal2 = _meal_choice(prefix, 2, today_style)
+        meal3 = _meal_choice(prefix, 3, today_style)
+        with st.container(key=f"{prefix}_junk_food_extra") if today_style else nullcontext():
+            junk = st.radio(
+                "Junk or sugary food?",
+                ["YES", "NO"],
+                horizontal=True,
+                index=None,
+                help="YES means it was consumed. NO means it was not consumed.",
+                key=f"{prefix}_junk",
+            )
+        with st.container(key=f"{prefix}_fruit_food_extra") if today_style else nullcontext():
+            fruit = st.radio(
+                "Did you eat any fruit today?",
+                ["YES", "NO"],
+                horizontal=True,
+                index=None,
+                key=f"{prefix}_fruit",
+            )
 
     with st.container(border=True, key=f"{prefix}_water_section"):
-        section_label("💧", "Water")
+        habit_heading("water", "Water") if today_style else section_label("💧", "Water")
         water = st.number_input(
             "Litres today",
             min_value=0.0,
@@ -125,8 +141,13 @@ def render_daily_form(
             key=f"{prefix}_water",
         )
 
+    if today_style:
+        with st.container(border=True, key=f"{prefix}_selfcare_section"):
+            habit_heading("selfcare", "Freshened up")
+            freshened = _freshened_choice(prefix)
+
     with st.container(border=True, key=f"{prefix}_stress_section"):
-        section_label("🧘", "Stress management")
+        habit_heading("stress", "Stress management") if today_style else section_label("🧘", "Stress management")
         stress = st.radio("Stress level", ["LOW", "MODERATE", "HIGH"], horizontal=True, index=None, key=f"{prefix}_stress")
         relax = st.radio(
             "Did you do something to relax?",
@@ -138,26 +159,31 @@ def render_daily_form(
         st.caption("Stress level is recorded for reflection and does not reduce your score.")
 
     with st.container(border=True, key=f"{prefix}_mood_section"):
-        section_label("🙂", "Mood")
+        habit_heading("mood", "Mood") if today_style else section_label("🙂", "Mood")
         mood = st.radio(
             "How did you feel?",
             ["Happy", "Okay", "Low"],
             horizontal=True,
             index=None,
-            format_func=lambda value: {"Happy": "😊 Happy", "Okay": "😐 Okay", "Low": "😔 Low"}[value],
+            format_func=lambda value: value if today_style else {"Happy": "😊 Happy", "Okay": "😐 Okay", "Low": "😔 Low"}[value],
             key=f"{prefix}_mood",
         )
         st.caption("Mood is for reflection only and does not affect your score.")
 
     with st.container(border=True, key=f"{prefix}_note_section"):
-        section_label("✍️", "Daily note", "Optional")
+        habit_heading("note", "Daily note", "Optional") if today_style else section_label("✍️", "Daily note", "Optional")
         note = st.text_area(
             "Anything you want to remember?",
             max_chars=2000,
-            placeholder="Optional",
+            placeholder="A small moment worth remembering…" if today_style else "Optional",
             key=f"{prefix}_note",
         )
-    if st.button("SAVE TODAY" if target_date == india_today() else "SAVE ENTRY", type="primary", width="stretch", key=f"{prefix}_save"):
+    save_label = "SAVE TODAY" if target_date == india_today() else "SAVE ENTRY"
+    if today_style:
+        save_label = "Save Today's Entry" if target_date == india_today() else "Save Entry"
+    with st.container(key="today_save_bar") if today_style else nullcontext():
+        submitted = st.button(save_label, type="primary", width="stretch", key=f"{prefix}_save")
+    if submitted:
         values = {
             "sleep_hours": sleep,
             "freshened_up": None if freshened is None else freshened == "YES",
@@ -178,5 +204,9 @@ def render_daily_form(
             saved = repo.save_log(target_date, values)
             st.session_state[f"saved_{target_date.isoformat()}"] = True
             st.success(f"Saved · Daily score is {float(saved['daily_score']):.0f}%")
+            if today_style:
+                st.toast(f"Saved · Daily score is {float(saved['daily_score']):.0f}%", icon=":material/check_circle:")
         except (ValidationError, RepositoryError) as exc:
             st.error(str(exc))
+            if today_style:
+                st.toast(str(exc), icon=":material/error:", duration="long")

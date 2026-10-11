@@ -4,13 +4,14 @@ import ast
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.mark.parametrize("page", ("history", "progress"))
-def test_redesigned_page_src_imports_resolve(page):
+@pytest.mark.parametrize("page", ("home", "today", "history", "progress"))
+def test_page_src_imports_resolve(page):
     """Execute the exact src.* import statements used by each page."""
     path = ROOT / "pages" / f"{page}.py"
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -22,3 +23,11 @@ def test_redesigned_page_src_imports_resolve(page):
             exec(compile(statement, str(path), "exec"), {})
         except ImportError as exc:
             pytest.fail(f"{path.name} cannot import from {node.module}: {exc}")
+
+
+def test_home_today_artwork_is_bundled():
+    """Both redesigned pages need this asset before their UI can render."""
+    artwork = ROOT / "assets" / "home-fairy-twilight.png"
+    assert artwork.is_file()
+    with Image.open(artwork) as image:
+        assert image.format == "PNG"
