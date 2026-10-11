@@ -6,6 +6,7 @@ Erumaa's Daily is a private, mobile-first personal routine and wellness tracker.
 
 - Private email/password sign-in with Supabase Authentication
 - One duplicate-safe record per user per India-local date
+- Fruit and freshened-up habit tracking with legacy-safe “not tracked” history
 - Exact 100-point daily scoring with completion as 10% of the score
 - Today/yesterday editing; older records are read-only in both UI and database
 - Weekly and monthly progress, streaks, factual insights, and mobile-friendly Plotly charts
@@ -35,6 +36,7 @@ src/celebrations.py         Local Pillow PNG generation
 src/ui.py                   Shared responsive UI and Settings
 src/validators.py           Server-side input validation
 supabase/schema.sql         Schema, constraints, indexes, RLS, immutability
+supabase/migrations/        Versioned additive upgrades for existing projects
 tests/                      Scoring, date, validation, streak tests
 ```
 
@@ -47,6 +49,8 @@ tests/                      Scoring, date, validation, streak tests
 5. From **Project Settings → API**, copy the project URL and the anon/public key. Never use the service-role key in this app.
 
 The SQL enables and forces Row Level Security. Authenticated users can select only their own rows, insert only their own current/recent rows, and update only their own today/yesterday rows. There is deliberately no delete policy. A database trigger separately prevents changing an entry owner/date and rejects updates older than yesterday using `Asia/Kolkata`.
+
+For an existing production database, do not rerun the full canonical schema. Apply pending files from `supabase/migrations/` in filename order before deploying the matching application version. V2.1 requires `20261011_add_fruit_and_freshened_up.sql`; it adds two nullable columns and does not rewrite historical rows.
 
 ## Local installation
 
@@ -80,7 +84,7 @@ The same values may instead be provided as `SUPABASE_URL` and `SUPABASE_ANON_KEY
 pytest
 ```
 
-The suite covers all specified sleep/exercise/water examples, food semantics, stress and mood neutrality, celebration thresholds, India-local date behavior, edit permissions, validation, and streaks.
+The suite covers sleep/exercise/water examples, fruit-aware food scoring, non-scoring habits, legacy NULL handling, celebration thresholds, India-local date behavior, edit permissions, validation, migrations, and streaks.
 
 ## Free deployment (Streamlit Community Cloud)
 
@@ -105,7 +109,7 @@ The hosted Streamlit process talks directly to Supabase; the developer PC is not
 
 ## Scoring
 
-The implementation is documented in `src/scoring.py`: Sleep 20%, Exercise 20%, Food 25%, Water 15%, Stress-management action 10%, and completion 10%. Food already includes 80% meal quality and 20% junk/sugary-food control, so junk food is not double-counted. Mood and stress level never change the score.
+The implementation is documented in `src/scoring.py`: Sleep 20%, Exercise 20%, Food 25%, Water 15%, Stress-management action 10%, and completion 10%. Food combines 60% meal quality, 20% junk/sugary-food control, and 20% fruit consumption. Freshening up, mood, and stress level never change the score.
 
 ## Production checklist
 

@@ -1,7 +1,12 @@
 from datetime import date
 
 from src.insights import weekly_insights
-from src.progress import latest_qualifying_week, monthly_metrics, qualifying_weeks_in_month
+from src.progress import (
+    latest_qualifying_week,
+    monthly_metrics,
+    qualifying_weeks_in_month,
+    weekly_habit_stats,
+)
 
 
 def completed_week(monday: date, score: float):
@@ -42,4 +47,39 @@ def test_empty_progress_data_has_safe_zero_state():
 def test_missing_week_data_never_creates_achievement():
     assert latest_qualifying_week([]) is None
     assert latest_qualifying_week(completed_week(date(2026, 9, 14), 100)[:6]) is None
+
+
+def test_weekly_habits_ignore_legacy_null_values():
+    records = [
+        {"ate_fruit": True, "freshened_up": False},
+        {"ate_fruit": False, "freshened_up": True},
+        {"ate_fruit": None, "freshened_up": None},
+        {},
+    ]
+    assert weekly_habit_stats(records) == {
+        "ate_fruit": (1, 2),
+        "freshened_up": (1, 2),
+    }
+
+
+def test_weekly_insights_report_only_tracked_new_habits():
+    records = [
+        {
+            "sleep_hours": 8,
+            "water_liters": 2.5,
+            "exercise_done": True,
+            "ate_fruit": True,
+            "freshened_up": False,
+        },
+        {
+            "sleep_hours": 7,
+            "water_liters": 2,
+            "exercise_done": False,
+            "ate_fruit": None,
+            "freshened_up": True,
+        },
+    ]
+    insights = weekly_insights(records)
+    assert "You ate fruit on 1 out of 1 tracked days." in insights
+    assert "You freshened up after waking on 1 out of 2 tracked days." in insights
 

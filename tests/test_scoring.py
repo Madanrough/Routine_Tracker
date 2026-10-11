@@ -35,14 +35,15 @@ def test_water_score(litres, expected):
 
 
 def test_food_score_all_meals_and_no_junk():
-    meal, junk, food = calculate_food_score(True, True, True, False)
+    meal, junk, fruit, food = calculate_food_score(True, True, True, False, True)
     assert meal == 100
     assert junk == 100
+    assert fruit == 100
     assert food == 100
 
 
 def test_junk_is_not_double_counted():
-    _, _, food = calculate_food_score(True, True, True, True)
+    _, _, _, food = calculate_food_score(True, True, True, True, True)
     daily = calculate_daily_score(
         sleep_score=0,
         exercise_score=0,
@@ -55,6 +56,16 @@ def test_junk_is_not_double_counted():
     assert daily == 20
 
 
+def test_no_fruit_reduces_only_the_fruit_part_of_food_score():
+    meal, junk, fruit, food = calculate_food_score(True, True, True, False, False)
+    assert (meal, junk, fruit, food) == (100, 100, 0, 80)
+
+
+def test_food_score_requires_every_food_answer():
+    with pytest.raises(ValueError, match="All Food questions"):
+        calculate_food_score(True, True, True, False, None)
+
+
 def complete_record(**overrides):
     values = {
         "sleep_hours": 8,
@@ -64,7 +75,9 @@ def complete_record(**overrides):
         "meal2_protein_fibre": True,
         "meal3_protein_fibre": True,
         "junk_sugary_food": False,
+        "ate_fruit": True,
         "water_liters": 2.5,
+        "freshened_up": True,
         "stress_level": "HIGH",
         "stress_management": True,
         "mood": "Happy",
@@ -85,6 +98,19 @@ def test_mood_does_not_change_daily_score():
     happy = score_daily_record(complete_record(mood="Happy"))
     low = score_daily_record(complete_record(mood="Low"))
     assert happy["daily_score"] == low["daily_score"]
+
+
+def test_freshened_up_never_changes_any_score():
+    yes = score_daily_record(complete_record(freshened_up=True))
+    no = score_daily_record(complete_record(freshened_up=False))
+    assert yes == no
+
+
+def test_fruit_no_keeps_total_score_bounded():
+    scores = score_daily_record(complete_record(ate_fruit=False))
+    assert scores["food_score"] == 80
+    assert scores["daily_score"] == 95
+    assert 0 <= scores["daily_score"] <= 100
 
 
 def test_daily_weights_total_exactly_100_percent():

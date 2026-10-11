@@ -37,12 +37,14 @@ def render_daily_form(
     row = existing or {}
     defaults = {
         f"{prefix}_sleep": float(row.get("sleep_hours") or 0),
+        f"{prefix}_freshened": _choice(row.get("freshened_up")),
         f"{prefix}_exercise": _choice(row.get("exercise_done")),
         f"{prefix}_minutes": float(row.get("exercise_minutes") or 0),
         f"{prefix}_meal1": _choice(row.get("meal1_protein_fibre")),
         f"{prefix}_meal2": _choice(row.get("meal2_protein_fibre")),
         f"{prefix}_meal3": _choice(row.get("meal3_protein_fibre")),
         f"{prefix}_junk": _choice(row.get("junk_sugary_food")),
+        f"{prefix}_fruit": _choice(row.get("ate_fruit")),
         f"{prefix}_water": float(row.get("water_liters") or 0),
         f"{prefix}_stress": row.get("stress_level"),
         f"{prefix}_relax": _choice(row.get("stress_management")),
@@ -62,6 +64,13 @@ def render_daily_form(
             max_value=24.0,
             step=0.5,
             key=f"{prefix}_sleep",
+        )
+        freshened = st.radio(
+            "Did you freshen up after waking up?",
+            ["YES", "NO"],
+            horizontal=True,
+            index=None,
+            key=f"{prefix}_freshened",
         )
 
     with st.container(border=True, key=f"{prefix}_exercise_section"):
@@ -97,6 +106,13 @@ def render_daily_form(
             index=None,
             help="YES means it was consumed. NO means it was not consumed.",
             key=f"{prefix}_junk",
+        )
+        fruit = st.radio(
+            "Did you eat any fruit today?",
+            ["YES", "NO"],
+            horizontal=True,
+            index=None,
+            key=f"{prefix}_fruit",
         )
 
     with st.container(border=True, key=f"{prefix}_water_section"):
@@ -144,12 +160,14 @@ def render_daily_form(
     if st.button("SAVE TODAY" if target_date == india_today() else "SAVE ENTRY", type="primary", width="stretch", key=f"{prefix}_save"):
         values = {
             "sleep_hours": sleep,
+            "freshened_up": None if freshened is None else freshened == "YES",
             "exercise_done": None if exercise_choice is None else exercise_choice == "YES",
             "exercise_minutes": int(minutes) if exercise_choice == "YES" else 0,
             "meal1_protein_fibre": None if meal1 is None else meal1 == "YES",
             "meal2_protein_fibre": None if meal2 is None else meal2 == "YES",
             "meal3_protein_fibre": None if meal3 is None else meal3 == "YES",
             "junk_sugary_food": None if junk is None else junk == "YES",
+            "ate_fruit": None if fruit is None else fruit == "YES",
             "water_liters": water,
             "stress_level": stress,
             "stress_management": None if relax is None else relax == "YES",

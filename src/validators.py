@@ -15,7 +15,9 @@ FIELD_LABELS = {
     "meal2_protein_fibre": "2nd Meal",
     "meal3_protein_fibre": "3rd Meal",
     "junk_sugary_food": "Junk / Sugary Food",
+    "ate_fruit": "Fruit",
     "water_liters": "Water",
+    "freshened_up": "Freshened up",
     "stress_level": "Stress level",
     "stress_management": "Stress management",
     "mood": "Mood",
@@ -38,6 +40,8 @@ def validate_daily_record(values: Mapping[str, Any]) -> None:
         "meal2_protein_fibre",
         "meal3_protein_fibre",
         "junk_sugary_food",
+        "ate_fruit",
+        "freshened_up",
         "stress_management",
     )
     for name in boolean_fields:

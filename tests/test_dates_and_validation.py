@@ -18,7 +18,9 @@ def valid_record():
         "meal2_protein_fibre": True,
         "meal3_protein_fibre": False,
         "junk_sugary_food": False,
+        "ate_fruit": True,
         "water_liters": 2.2,
+        "freshened_up": True,
         "stress_level": "MODERATE",
         "stress_management": True,
         "mood": "Okay",
@@ -70,6 +72,8 @@ def test_missing_exercise_minutes_when_yes_is_rejected():
         "meal2_protein_fibre",
         "meal3_protein_fibre",
         "junk_sugary_food",
+        "ate_fruit",
+        "freshened_up",
         "stress_management",
     ],
 )
@@ -84,6 +88,14 @@ def test_daily_note_must_be_text():
     record = valid_record()
     record["daily_note"] = 123
     with pytest.raises(ValidationError):
+        validate_daily_record(record)
+
+
+@pytest.mark.parametrize("field", ["ate_fruit", "freshened_up"])
+def test_new_check_ins_require_explicit_answers(field):
+    record = valid_record()
+    record[field] = None
+    with pytest.raises(ValidationError, match="Please complete"):
         validate_daily_record(record)
 
 

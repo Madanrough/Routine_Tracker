@@ -27,7 +27,9 @@ REQUIRED_FIELDS = (
     "meal2_protein_fibre",
     "meal3_protein_fibre",
     "junk_sugary_food",
+    "ate_fruit",
     "water_liters",
+    "freshened_up",
     "stress_level",
     "stress_management",
     "mood",
@@ -49,12 +51,22 @@ def calculate_exercise_score(exercise_done: bool, exercise_minutes: float | None
 
 
 def calculate_food_score(
-    meal1_protein_fibre: bool,
-    meal2_protein_fibre: bool,
-    meal3_protein_fibre: bool,
-    junk_sugary_food: bool,
-) -> tuple[float, float, float]:
-    """Return meal quality, junk control, and combined food scores."""
+    meal1_protein_fibre: bool | None,
+    meal2_protein_fibre: bool | None,
+    meal3_protein_fibre: bool | None,
+    junk_sugary_food: bool | None,
+    ate_fruit: bool | None,
+) -> tuple[float, float, float, float]:
+    """Return meal, junk, fruit, and food scores for a complete Food check-in."""
+    food_answers = (
+        meal1_protein_fibre,
+        meal2_protein_fibre,
+        meal3_protein_fibre,
+        junk_sugary_food,
+        ate_fruit,
+    )
+    if any(value is None for value in food_answers):
+        raise ValueError("All Food questions must be answered before calculating its score.")
     meal_quality = round(
         sum(100.0 if value else 0.0 for value in (
             meal1_protein_fibre,
@@ -64,8 +76,9 @@ def calculate_food_score(
         2,
     )
     junk_control = 0.0 if junk_sugary_food else 100.0
-    food = round(meal_quality * 0.8 + junk_control * 0.2, 2)
-    return meal_quality, junk_control, food
+    fruit = 100.0 if ate_fruit else 0.0
+    food = round(meal_quality * 0.6 + junk_control * 0.2 + fruit * 0.2, 2)
+    return meal_quality, junk_control, fruit, food
 
 
 def calculate_water_score(water_liters: float) -> float:
@@ -114,11 +127,12 @@ def score_daily_record(values: Mapping[str, Any]) -> dict[str, float]:
     exercise_score = calculate_exercise_score(
         bool(values["exercise_done"]), values.get("exercise_minutes")
     )
-    meal_quality, junk_control, food_score = calculate_food_score(
-        bool(values["meal1_protein_fibre"]),
-        bool(values["meal2_protein_fibre"]),
-        bool(values["meal3_protein_fibre"]),
-        bool(values["junk_sugary_food"]),
+    meal_quality, junk_control, _fruit, food_score = calculate_food_score(
+        values.get("meal1_protein_fibre"),
+        values.get("meal2_protein_fibre"),
+        values.get("meal3_protein_fibre"),
+        values.get("junk_sugary_food"),
+        values.get("ate_fruit"),
     )
     water_score = calculate_water_score(float(values["water_liters"]))
     stress_score = calculate_stress_management_score(bool(values["stress_management"]))

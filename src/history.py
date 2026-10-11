@@ -22,6 +22,8 @@ def edit_status(day: date, today: date) -> str:
 
 def record_details(record: dict[str, Any]) -> list[tuple[str, str]]:
     def yes_no(value: Any) -> str:
+        if value is None:
+            return "Not tracked"
         return "Yes" if value else "No"
 
     exercise = "No"
@@ -34,7 +36,9 @@ def record_details(record: dict[str, Any]) -> list[tuple[str, str]]:
         ("2nd Meal · Protein + Fibre", yes_no(record.get("meal2_protein_fibre"))),
         ("3rd Meal · Protein + Fibre", yes_no(record.get("meal3_protein_fibre"))),
         ("Junk / Sugary Food", yes_no(record.get("junk_sugary_food"))),
+        ("Fruit", yes_no(record.get("ate_fruit"))),
         ("Water", f"{float(record.get('water_liters') or 0):g} L"),
+        ("Freshened up after waking", yes_no(record.get("freshened_up"))),
         ("Stress", str(record.get("stress_level") or "—").title()),
         ("Relaxation action", yes_no(record.get("stress_management"))),
         ("Mood", str(record.get("mood") or "—")),

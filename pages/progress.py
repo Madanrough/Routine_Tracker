@@ -13,7 +13,13 @@ from src.auth import current_user_id, get_supabase_client
 from src.celebrations import generate_achievement_card
 from src.database import DailyLogRepository, RepositoryError
 from src.insights import weekly_insights
-from src.progress import latest_qualifying_week, monthly_metrics, qualifying_weeks_in_month, weekly_series
+from src.progress import (
+    latest_qualifying_week,
+    monthly_metrics,
+    qualifying_weeks_in_month,
+    weekly_habit_stats,
+    weekly_series,
+)
 from src.scoring import calculate_current_streak, calculate_weekly_average
 from src.timezone_utils import india_today, month_bounds, week_bounds
 from src.ui import (
@@ -130,6 +136,19 @@ stat_grid(
         ("CURRENT STREAK", f"{streak} {'day' if streak == 1 else 'days'}", "Consecutive complete days"),
     ]
 )
+
+habit_stats = weekly_habit_stats(week_records)
+habit_cards = []
+fruit_yes, fruit_tracked = habit_stats["ate_fruit"]
+if fruit_tracked:
+    habit_cards.append(("FRUIT", f"{fruit_yes} / {fruit_tracked}", "Tracked days with fruit"))
+freshened_yes, freshened_tracked = habit_stats["freshened_up"]
+if freshened_tracked:
+    habit_cards.append(
+        ("FRESHENED UP", f"{freshened_yes} / {freshened_tracked}", "Tracked mornings")
+    )
+if habit_cards:
+    stat_grid(habit_cards)
 
 series = pd.DataFrame(weekly_series(week_records, monday))
 trend_chart(series, "daily_score", "Daily Score", "%")

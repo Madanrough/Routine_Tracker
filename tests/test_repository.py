@@ -16,7 +16,9 @@ def valid_values():
         "meal2_protein_fibre": True,
         "meal3_protein_fibre": True,
         "junk_sugary_food": False,
+        "ate_fruit": True,
         "water_liters": 2.5,
+        "freshened_up": False,
         "stress_level": "LOW",
         "stress_management": True,
         "mood": "Happy",
@@ -86,6 +88,9 @@ def test_duplicate_safe_save_uses_user_date_conflict(monkeypatch):
     assert operation[2] == "user_id,log_date"
     assert operation[1]["user_id"] == "user-1"
     assert operation[1]["log_date"] == "2026-09-19"
+    assert operation[1]["ate_fruit"] is True
+    assert operation[1]["freshened_up"] is False
+    assert isinstance(operation[1]["exercise_minutes"], int)
     assert result["daily_score"] == 100
 
 
@@ -103,6 +108,12 @@ def test_export_query_is_scoped_to_authenticated_user():
     repo = DailyLogRepository(Client(query), "user-1")
     assert repo.export_rows() == []
     assert ("eq", "user_id", "user-1") in query.operations
+
+
+def test_export_rows_include_new_habit_fields_unchanged():
+    row = {"ate_fruit": None, "freshened_up": True}
+    repo = DailyLogRepository(Client(Query([row])), "user-1")
+    assert repo.export_rows() == [row]
 
 
 def test_database_unavailable_is_wrapped_in_friendly_error():

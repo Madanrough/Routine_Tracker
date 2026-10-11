@@ -24,9 +24,20 @@ def weekly_series(records: Sequence[dict[str, Any]], monday: date) -> list[dict[
             "sleep_hours": lookup.get(monday + timedelta(days=offset), {}).get("sleep_hours"),
             "exercise_done": lookup.get(monday + timedelta(days=offset), {}).get("exercise_done"),
             "water_liters": lookup.get(monday + timedelta(days=offset), {}).get("water_liters"),
+            "ate_fruit": lookup.get(monday + timedelta(days=offset), {}).get("ate_fruit"),
+            "freshened_up": lookup.get(monday + timedelta(days=offset), {}).get("freshened_up"),
         }
         for offset in range(7)
     ]
+
+
+def weekly_habit_stats(records: Sequence[dict[str, Any]]) -> dict[str, tuple[int, int]]:
+    """Count Yes answers and tracked days without treating legacy NULLs as No."""
+    result: dict[str, tuple[int, int]] = {}
+    for field in ("ate_fruit", "freshened_up"):
+        tracked = [row for row in records if row.get(field) is not None]
+        result[field] = (sum(row.get(field) is True for row in tracked), len(tracked))
+    return result
 
 
 def monthly_metrics(records: Sequence[dict[str, Any]]) -> dict[str, float | int]:

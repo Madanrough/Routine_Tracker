@@ -23,6 +23,19 @@ def weekly_insights(
         f"You exercised {exercise_days} out of {count} recorded days.",
         f"Your average water intake is {water:.1f} L.",
     ]
+    fruit_records = [row for row in records if row.get("ate_fruit") is not None]
+    if fruit_records:
+        fruit_days = sum(row.get("ate_fruit") is True for row in fruit_records)
+        result.append(
+            f"You ate fruit on {fruit_days} out of {len(fruit_records)} tracked days."
+        )
+    freshened_records = [row for row in records if row.get("freshened_up") is not None]
+    if freshened_records:
+        freshened_days = sum(row.get("freshened_up") is True for row in freshened_records)
+        result.append(
+            f"You freshened up after waking on {freshened_days} out of "
+            f"{len(freshened_records)} tracked days."
+        )
     if previous_records:
         difference = calculate_weekly_average(records) - calculate_weekly_average(previous_records)
         direction = "improved" if difference >= 0 else "changed"

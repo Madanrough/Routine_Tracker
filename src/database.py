@@ -69,6 +69,8 @@ class DailyLogRepository:
             "exercise_minutes": int(values.get("exercise_minutes") or 0),
             "sleep_hours": float(values["sleep_hours"]),
             "water_liters": float(values["water_liters"]),
+            "ate_fruit": values["ate_fruit"],
+            "freshened_up": values["freshened_up"],
             "daily_note": (values.get("daily_note") or "").strip() or None,
         }
         try:
@@ -87,4 +89,5 @@ class DailyLogRepository:
             ) from exc
 
     def export_rows(self) -> list[dict[str, Any]]:
+        """Export complete selected rows, including newly added database columns."""
         return self.list_logs()
